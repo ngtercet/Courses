@@ -33,7 +33,7 @@ public class BufferPool {
 
     private int numPages;
 
-    private HashMap<Integer, Page> pages = new HashMap<>();
+    private HashMap<PageId, Page> pages = new HashMap<>();
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -77,7 +77,17 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        // TODO lock
+        if (pages.containsKey(pid)) {
+            return pages.get(pid);
+        }
+        if (pages.size() >= numPages) {
+            evictPage();
+        }
+        DbFile df = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        Page pg = df.readPage(pid);
+        pages.put(pid, pg);
+        return pg;
     }
 
     /**

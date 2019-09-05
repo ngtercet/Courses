@@ -56,4 +56,5 @@ public interface Page {
      * copy current content to the before image.
      */
     public void setBeforeImage();
+
 }

@@ -162,7 +162,11 @@ public class TupleDesc implements Serializable {
      */
     public int getSize() {
         // some code goes here
-        return tdItems.size();
+        int tupleSize = 0;
+        for (TDItem tdItem : tdItems) {
+            tupleSize += tdItem.fieldType.getLen();
+        }
+        return tupleSize;
     }
 
     /**
@@ -182,6 +186,7 @@ public class TupleDesc implements Serializable {
         td.tdItems.addAll(td2.tdItems);
         return td;
     }
+
 
     /**
      * Compares the specified object with this TupleDesc for equality. Two
@@ -236,5 +241,9 @@ public class TupleDesc implements Serializable {
         }
         sb.replace(sb.length() - 2, sb.length(), "");
         return sb.toString();
+    }
+
+    public ArrayList<TDItem> getTdItems() {
+        return tdItems;
     }
 }

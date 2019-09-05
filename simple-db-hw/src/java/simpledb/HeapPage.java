@@ -12,7 +12,7 @@ import java.io.*;
  */
 public class HeapPage implements Page {
 
-    final HeapPageId pid;
+    final PageId pid;
     final TupleDesc td;
     final byte header[];
     final Tuple tuples[];
@@ -38,7 +38,7 @@ public class HeapPage implements Page {
      * @see Catalog#getTupleDesc
      * @see BufferPool#getPageSize()
      */
-    public HeapPage(HeapPageId id, byte[] data) throws IOException {
+    public HeapPage(PageId id, byte[] data) throws IOException {
         this.pid = id;
         this.td = Database.getCatalog().getTupleDesc(id.getTableId());
         this.numSlots = getNumTuples();
@@ -70,13 +70,7 @@ public class HeapPage implements Page {
      */
     private int getNumTuples() {
         // some code goes here
-        int tupleSize = 0;
-        Iterator<TupleDesc.TDItem> it = td.iterator();
-        while (it.hasNext()) {
-            TupleDesc.TDItem tdItem = it.next();
-            tupleSize += tdItem.fieldType.getLen();
-        }
-        return (int) Math.floor(BufferPool.getPageSize() * 8.0 / (tupleSize * 8 + 1));
+        return (int) Math.floor(BufferPool.getPageSize() * 8.0 / (this.td.getSize() * 8 + 1));
     }
 
     /**
@@ -86,7 +80,7 @@ public class HeapPage implements Page {
      */
     private int getHeaderSize() {
         // some code goes here
-        return (int) Math.ceil(this.numSlots >> 3);
+        return (int) Math.ceil(1.0 * this.numSlots / 8);
     }
 
     /**
@@ -117,7 +111,7 @@ public class HeapPage implements Page {
     /**
      * @return the PageId associated with this page.
      */
-    public HeapPageId getId() {
+    public PageId getId() {
         return pid;
     }
 

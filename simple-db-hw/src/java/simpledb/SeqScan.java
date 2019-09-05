@@ -1,5 +1,6 @@
 package simpledb;
 
+import javax.xml.crypto.Data;
 import java.util.*;
 
 /**
@@ -10,6 +11,12 @@ import java.util.*;
 public class SeqScan implements OpIterator {
 
     private static final long serialVersionUID = 1L;
+
+    private String tableAlias;
+    private TransactionId tid;
+    private int tableid;
+    private DbFile df;
+    private DbFileIterator it;
 
     /**
      * Creates a sequential scan over the specified table as a part of the
@@ -29,6 +36,11 @@ public class SeqScan implements OpIterator {
      */
     public SeqScan(TransactionId tid, int tableid, String tableAlias) {
         // some code goes here
+        this.tid = tid;
+        this.tableid = tableid;
+        this.tableAlias = tableAlias;
+        this.df = Database.getCatalog().getDatabaseFile(tableid);
+        this.it = df.iterator(tid);
     }
 
     /**
@@ -37,7 +49,7 @@ public class SeqScan implements OpIterator {
      *       be the actual name of the table in the catalog of the database
      * */
     public String getTableName() {
-        return null;
+        return Database.getCatalog().getTableName(tableid);
     }
 
     /**
@@ -46,7 +58,7 @@ public class SeqScan implements OpIterator {
     public String getAlias()
     {
         // some code goes here
-        return null;
+        return tableAlias;
     }
 
     /**
@@ -63,6 +75,8 @@ public class SeqScan implements OpIterator {
      */
     public void reset(int tableid, String tableAlias) {
         // some code goes here
+        this.tableid = tableid;
+        this.tableAlias = tableAlias;
     }
 
     public SeqScan(TransactionId tid, int tableId) {
@@ -71,6 +85,7 @@ public class SeqScan implements OpIterator {
 
     public void open() throws DbException, TransactionAbortedException {
         // some code goes here
+        it.open();
     }
 
     /**
@@ -85,26 +100,35 @@ public class SeqScan implements OpIterator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        ArrayList<TupleDesc.TDItem> tdItems = df.getTupleDesc().getTdItems();
+        Type[] types = new Type[tdItems.size()];
+        String[] names = new String[tdItems.size()];
+        for (int i = 0; i < tdItems.size(); i++) {
+            types[i] = tdItems.get(i).fieldType;
+            names[i] = this.tableAlias + "." + tdItems.get(i).fieldName;
+        }
+        return new TupleDesc(types, names);
     }
 
     public boolean hasNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return false;
+        return it.hasNext();
     }
 
     public Tuple next() throws NoSuchElementException,
             TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        return it.next();
     }
 
     public void close() {
         // some code goes here
+        it.close();
     }
 
     public void rewind() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
+        it.rewind();
     }
 }
