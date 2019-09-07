@@ -63,7 +63,6 @@ public class Catalog {
      */
     public void addTable(DbFile file, String name, String pkeyField) {
         // some code goes here
-        // TODO
         nameMap.put(name, new DbFileWrapper(file, pkeyField, name));
         idMap.put(file.getId(), new DbFileWrapper(file, pkeyField, name));
     }

@@ -33,7 +33,7 @@ public class HeapFileIterator extends AbstractDbFileIterator {
     @Override
     public void close() {
         super.close();
-        this.curPgNo = -1;
+        this.curPgNo = 0;
         this.bf = null;
         this.hf = null;
         this.it = null;
