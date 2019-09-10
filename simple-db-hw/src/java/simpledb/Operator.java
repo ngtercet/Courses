@@ -1,5 +1,6 @@
 package simpledb;
 
+import java.util.ArrayList;
 import java.util.NoSuchElementException;
 
 /**
@@ -10,6 +11,8 @@ import java.util.NoSuchElementException;
 public abstract class Operator implements OpIterator {
 
     private static final long serialVersionUID = 1L;
+
+    protected ArrayList<OpIterator> children = new ArrayList<>();
 
     public boolean hasNext() throws DbException, TransactionAbortedException {
         if (!this.open)
