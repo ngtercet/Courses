@@ -50,7 +50,6 @@ public class HeapPageWriteTest extends SimpleDbTestBase {
     @Test public void addTuple() throws Exception {
         HeapPage page = new HeapPage(pid, HeapPageReadTest.EXAMPLE_DATA);
         int free = page.getNumEmptySlots();
-
         // NOTE(ghuo): this nested loop existence check is slow, but it
         // shouldn't make a difference for n = 504 slots.
 
@@ -68,7 +67,7 @@ public class HeapPageWriteTest extends SimpleDbTestBase {
                 if (TestUtil.compareTuples(addition, tup)) {
                     found = true;
 
-                    // verify that the RecordId is sane
+                    // verify that the RecordId is same
                     assertEquals(page.getId(), tup.getRecordId().getPageId());
                     break;
                 }
