@@ -4,6 +4,8 @@ import java.io.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Condition;
 
@@ -35,7 +37,8 @@ public class BufferPool {
 
     private int numPages;
 
-    private HashMap<PageId, Page> pages = new HashMap<>();
+    private HashMap<PageId, Page> pages;
+    private LRUCache lru;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -45,6 +48,8 @@ public class BufferPool {
     public BufferPool(int numPages) {
         // some code goes here
         this.numPages = numPages;
+        this.pages = new HashMap<>();
+        this.lru = new LRUCache();
     }
 
     public static int getPageSize() {
@@ -90,6 +95,8 @@ public class BufferPool {
         DbFile df = Database.getCatalog().getDatabaseFile(pid.getTableId());
         Page pg = df.readPage(pid);
         pages.put(pid, pg);
+
+        lru.use(pg.getId());
         return pg;
     }
 
@@ -196,7 +203,9 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-
+        for (Map.Entry<PageId, Page> e : pages.entrySet()) {
+            flushPage(e.getKey());
+        }
     }
 
     /**
@@ -211,6 +220,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        pages.remove(pid);
     }
 
     /**
@@ -221,6 +231,14 @@ public class BufferPool {
     private synchronized void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        Page pg = pages.get(pid);
+        TransactionId tid = pg.isDirty();
+        if (tid != null) {
+            int tableID = pid.getTableId();
+            DbFile dbFile = Database.getCatalog().getDatabaseFile(tableID);
+            dbFile.writePage(pg);
+            pg.markDirty(false, tid);
+        }
     }
 
     /**
@@ -238,6 +256,27 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        PageId toEvict = lru.evict();
+        try {
+            flushPage(toEvict);
+        } catch (IOException e) {
+            throw new DbException(e.getMessage());
+        }
+        discardPage(toEvict);
     }
 
+    private class LRUCache {
+        LinkedList<PageId> cache = new LinkedList<>();
+
+        void use(PageId pid) {
+            if (pages.containsKey(pid)) {
+                cache.remove(pid);
+            }
+            cache.addFirst(pid);
+        }
+
+        PageId evict() {
+            return cache.removeLast();
+        }
+    }
 }
