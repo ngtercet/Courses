@@ -68,7 +68,7 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
         for (int i = 0; i < 504; ++i) {
         	Tuple t = Utility.getHeapTuple(i, 2);
         	Database.getBufferPool().insertTuple(tid, empty.getId(), t);
-        	HeapPage p = (HeapPage) Database.getBufferPool().getPage(tid, t.getRecordId().getPageId(), Permissions.READ_ONLY);
+			HeapPage p = (HeapPage) Database.getBufferPool().getPage(tid, t.getRecordId().getPageId(), Permissions.READ_ONLY);
         	assertEquals(504-i-1, p.getNumEmptySlots());
         }
 
@@ -120,7 +120,7 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
     	HeapFileDuplicates hfd = new HeapFileDuplicates(empty.getFile(), empty.getTupleDesc(), 10);
     	Database.getCatalog().addTable(hfd, SystemTestUtil.getUUID());
     	Database.getBufferPool().insertTuple(tid, hfd.getId(), Utility.getHeapTuple(1, 2));
-    	
+
     	// there should now be 10 tuples (on 10 different pages) in the buffer pool
     	DbFileIterator it = hfd.iterator(tid);
     	it.open();

@@ -36,6 +36,7 @@ public class Aggregate extends Operator {
     public Aggregate(OpIterator child, int afield, int gfield, Aggregator.Op aop) {
         // some code goes here
         this.child = child;
+        setChildren(new OpIterator[]{child});
         this.afield = afield;
         this.gfield = gfield;
         this.aop = aop;
@@ -56,7 +57,7 @@ public class Aggregate extends Operator {
     private void doAggergate() {
         Type afieldType = childTd.getFieldType(afield);
         Type gfieldType = childTd.getFieldType(gfield);
-        switch(afieldType) {
+        switch (afieldType) {
             case INT_TYPE:
                 ag = new IntegerAggregator(gfield, gfieldType, afield, aop);
                 break;

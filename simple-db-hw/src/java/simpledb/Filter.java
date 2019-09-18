@@ -25,7 +25,7 @@ public class Filter extends Operator {
         // some code goes here
         this.p = p;
         this.child = child;
-        this.children.add(child);
+        setChildren(new OpIterator[]{child});
     }
 
     public Predicate getPredicate() {

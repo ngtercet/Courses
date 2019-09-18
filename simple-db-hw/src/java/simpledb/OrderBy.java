@@ -29,6 +29,7 @@ public class OrderBy extends Operator {
     public OrderBy(int orderbyField, boolean asc, OpIterator child) {
         this.child = child;
         td = child.getTupleDesc();
+        setChildren(new OpIterator[]{child});
         this.orderByField = orderbyField;
         this.orderByFieldName = td.getFieldName(orderbyField);
         this.asc = asc;
