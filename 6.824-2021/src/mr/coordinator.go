@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -20,8 +19,7 @@ const (
 type Coordinator struct {
 	// Your definitions here.
 	Status         int8
-	MapNum         int
-	ReduceNum      int
+	NReduce        int
 	GlobalWorkerId int64
 	Waitting       *TaskList
 	Running        *TaskList
@@ -29,11 +27,12 @@ type Coordinator struct {
 }
 
 type Task struct {
-	Type      byte
-	Name      string
-	WorkerId  int64
-	StartTime int64
-	EndTime   int64
+	Type           byte
+	ID             int
+	FileNamePrefix string
+	WorkerId       int64
+	StartTime      int64
+	EndTime        int64
 }
 
 type TaskNode struct {
@@ -48,11 +47,11 @@ type TaskList struct {
 	Size int
 }
 
-func (t *TaskList) get(name string) *Task {
+func (t *TaskList) get(id int) *Task {
 	node := t.Head
 	for node != nil {
 		task := node.Task
-		if name == task.Name {
+		if id == task.ID {
 			return task
 		}
 		node = node.Next
@@ -60,14 +59,14 @@ func (t *TaskList) get(name string) *Task {
 	return nil
 }
 
-func (t *TaskList) remove(name string) *Task {
+func (t *TaskList) remove(id int) *Task {
 	node := t.Head
 	if node == nil {
 		return nil
 	}
 	for node != nil {
 		task := node.Task
-		if task.Name == name {
+		if task.ID == id {
 			left := node.Pre
 			right := node.Next
 			if left != nil {
@@ -115,6 +114,7 @@ func (t *TaskList) removeFirst() *Task {
 	} else {
 		t.Head.Pre = nil
 	}
+	t.Size--
 	return res
 }
 
@@ -123,43 +123,48 @@ func (t *TaskList) size() int {
 }
 
 type Req struct {
-	TaskName string
+	TaskID   int
 	WorkerId int64
 }
 
 type Rsp struct {
-	TaskName  string
-	ReduceNum int
-	WorkerId  int64
+	Type           byte
+	TaskID         int
+	FileNamePrefix string
+	NReduce        int
+	WorkerId       int64
 }
 
 // Your code here -- RPC handlers for the worker to call.
 func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
-	doneName := req.TaskName
+	doneID := req.TaskID
 	if req.WorkerId == -1 {
 		req.WorkerId = c.GlobalWorkerId
 		c.GlobalWorkerId++
 	}
-	if doneName != "" {
-		task := c.Running.get(doneName)
+	if doneID != -1 {
+		task := c.Running.get(doneID)
+		fmt.Printf("running %v\n", task)
 		if task != nil && task.WorkerId == req.WorkerId {
-			doneTask := c.Running.remove(doneName)
+			doneTask := c.Running.remove(doneID)
+			fmt.Printf("done %v\n", task)
 			if doneTask != nil {
 				doneTask.EndTime = nowMillUTC()
 				c.Finished.addLast(doneTask)
-				c.commitFile(doneName, doneTask.WorkerId)
+				c.commitFile(doneID, doneTask.WorkerId)
 			}
 		}
 	}
 	if c.Waitting.size() == 0 && c.Running.size() == 0 {
 		if c.Status == MAPPING {
 			c.Status = REDUCING
-			for i := 0; i < c.ReduceNum; i++ {
+			for i := 0; i < c.NReduce; i++ {
 				task := &Task{
 					Type: 1,
-					Name: strconv.Itoa(i),
+					ID:   i,
 				}
 				c.Waitting.addLast(task)
+				fmt.Printf("add reduce task: %v\n", task)
 			}
 		} else {
 			c.Status = DONE
@@ -170,28 +175,38 @@ func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
 		task.StartTime = nowMillUTC()
 		task.WorkerId = req.WorkerId
 		c.Running.addLast(task)
-		rsp.TaskName = task.Name
-		rsp.ReduceNum = c.ReduceNum
+		if c.Status == MAPPING {
+			rsp.Type = 0
+		} else {
+			rsp.Type = 1
+		}
+		rsp.TaskID = task.ID
+		rsp.FileNamePrefix = task.FileNamePrefix
+		rsp.NReduce = c.NReduce
+		rsp.WorkerId = task.WorkerId
 	}
 	return nil
 }
 
-func (c *Coordinator) commitFile(taskName string, workerId int64) {
+func (c *Coordinator) commitFile(taskID int, workerId int64) {
+	var temp string
+	var real string
 	switch c.Status {
 	case MAPPING:
-		for i := 0; i < c.ReduceNum; i++ {
+		for i := 0; i < c.NReduce; i++ {
 			// e.g. mr-1-1-1
-			temp := fmt.Sprintf("%s-%d-%d", taskName, i, workerId)
-			real := fmt.Sprintf("%s-%d", taskName, i)
+			temp = fmt.Sprintf("mr-%d-%d-%d", taskID, i, workerId)
+			real = fmt.Sprintf("mr-%d-%d", taskID, i)
 			os.Rename(temp, real)
 		}
 	case REDUCING:
 		// e.g. mr-out-1-1
-		temp := fmt.Sprintf("%s-%d", taskName, workerId)
-		real := taskName
+		temp = fmt.Sprintf("mr-out-%d-%d", taskID, workerId)
+		real = fmt.Sprintf("mr-out-%d", taskID)
 		os.Rename(temp, real)
 	default:
 	}
+	fmt.Printf("commit file %s to %s\n", temp, real)
 }
 
 func (c *Coordinator) scanTaskBG() {
@@ -228,18 +243,18 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	c := Coordinator{
 		Status:         MAPPING,
-		MapNum:         len(files),
-		ReduceNum:      nReduce,
+		NReduce:        nReduce,
 		GlobalWorkerId: 0,
 		Waitting:       watting,
 		Running:        running,
 		Finished:       finished,
 	}
 
-	for _, file := range files {
+	for i, file := range files {
 		task := &Task{
-			Type: 0,
-			Name: file,
+			Type:           0,
+			ID:             i,
+			FileNamePrefix: file,
 		}
 		c.Waitting.addLast(task)
 	}
