@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -56,7 +55,6 @@ func TestTaskList(t *testing.T) {
 		}
 		p = list.Tail
 		for _, name := range namesReversed {
-			fmt.Println(p.Task.ID)
 			if p == nil || p.Task.ID != name {
 				t.Errorf("name = %v, want %v", p.Task.ID, name)
 			}

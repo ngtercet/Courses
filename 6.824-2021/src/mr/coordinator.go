@@ -35,93 +35,6 @@ type Task struct {
 	EndTime        int64
 }
 
-type TaskNode struct {
-	Task *Task
-	Pre  *TaskNode
-	Next *TaskNode
-}
-
-type TaskList struct {
-	Head *TaskNode
-	Tail *TaskNode
-	Size int
-}
-
-func (t *TaskList) get(id int) *Task {
-	node := t.Head
-	for node != nil {
-		task := node.Task
-		if id == task.ID {
-			return task
-		}
-		node = node.Next
-	}
-	return nil
-}
-
-func (t *TaskList) remove(id int) *Task {
-	node := t.Head
-	if node == nil {
-		return nil
-	}
-	for node != nil {
-		task := node.Task
-		if task.ID == id {
-			left := node.Pre
-			right := node.Next
-			if left != nil {
-				left.Next = right
-			} else {
-				t.Head = right
-			}
-			if right != nil {
-				right.Pre = left
-			} else {
-				t.Tail = left
-			}
-			t.Size--
-			return task
-		}
-		node = node.Next
-	}
-	return nil
-}
-
-func (t *TaskList) addLast(task *Task) {
-	node := t.Head
-	newNode := &TaskNode{
-		Task: task,
-	}
-	if node == nil {
-		t.Head = newNode
-		t.Tail = t.Head
-	} else {
-		t.Tail.Next = newNode
-		newNode.Pre = t.Tail
-		t.Tail = newNode
-	}
-	t.Size++
-}
-
-func (t *TaskList) removeFirst() *Task {
-	if t.Head == nil {
-		return nil
-	}
-	res := t.Head.Task
-	t.Head = t.Head.Next
-	if t.Head == nil {
-		t.Tail = nil
-	} else {
-		t.Head.Pre = nil
-	}
-	t.Size--
-	return res
-}
-
-func (t *TaskList) size() int {
-	return t.Size
-}
-
 type Req struct {
 	TaskID   int
 	WorkerId int64
@@ -276,4 +189,91 @@ func (c *Coordinator) server() {
 		log.Fatal("listen error:", e)
 	}
 	go http.Serve(l, nil)
+}
+
+type TaskNode struct {
+	Task *Task
+	Pre  *TaskNode
+	Next *TaskNode
+}
+
+type TaskList struct {
+	Head *TaskNode
+	Tail *TaskNode
+	Size int
+}
+
+func (t *TaskList) get(id int) *Task {
+	node := t.Head
+	for node != nil {
+		task := node.Task
+		if id == task.ID {
+			return task
+		}
+		node = node.Next
+	}
+	return nil
+}
+
+func (t *TaskList) remove(id int) *Task {
+	node := t.Head
+	if node == nil {
+		return nil
+	}
+	for node != nil {
+		task := node.Task
+		if task.ID == id {
+			left := node.Pre
+			right := node.Next
+			if left != nil {
+				left.Next = right
+			} else {
+				t.Head = right
+			}
+			if right != nil {
+				right.Pre = left
+			} else {
+				t.Tail = left
+			}
+			t.Size--
+			return task
+		}
+		node = node.Next
+	}
+	return nil
+}
+
+func (t *TaskList) addLast(task *Task) {
+	node := t.Head
+	newNode := &TaskNode{
+		Task: task,
+	}
+	if node == nil {
+		t.Head = newNode
+		t.Tail = t.Head
+	} else {
+		t.Tail.Next = newNode
+		newNode.Pre = t.Tail
+		t.Tail = newNode
+	}
+	t.Size++
+}
+
+func (t *TaskList) removeFirst() *Task {
+	if t.Head == nil {
+		return nil
+	}
+	res := t.Head.Task
+	t.Head = t.Head.Next
+	if t.Head == nil {
+		t.Tail = nil
+	} else {
+		t.Head.Pre = nil
+	}
+	t.Size--
+	return res
+}
+
+func (t *TaskList) size() int {
+	return t.Size
 }
