@@ -1,13 +1,16 @@
 package mr
 
 import (
+	"bufio"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/rpc"
 	"os"
 	"sort"
+	"strings"
 )
 
 //
@@ -53,8 +56,16 @@ func Worker(mapf func(string, string) []KeyValue,
 		}
 		rsp := &Rsp{}
 		call("Coordinator.AskForTask", req, rsp)
+		if rsp.NMap == 0 {
+			continue
+		}
+		if rsp.NMap == -1 {
+			fmt.Printf("all tasks is done, worker: %v exit\n", workerId)
+			return
+		}
 		type_ := rsp.Type
-		filenamePrefix := rsp.FileNamePrefix
+		srcFileName := rsp.SrcFileName
+		nMap := rsp.NMap
 		nReduce := rsp.NReduce
 		taskID = rsp.TaskID
 		if workerId == -1 {
@@ -67,15 +78,14 @@ func Worker(mapf func(string, string) []KeyValue,
 				log.Fatalf("create reduce files failed, err: %v", err)
 				return
 			}
-			file, err := os.Open(filenamePrefix)
+			file, err := os.Open(srcFileName)
 			if err != nil {
-				log.Fatalf("open source file %v failed", filenamePrefix)
+				log.Fatalf("open source file %v failed", srcFileName)
 			} else {
 				if bytes, err := ioutil.ReadAll(file); err != nil {
 					log.Fatalf("cannot read %v", file)
 				} else {
-					kvs := mapf(filenamePrefix, string(bytes))
-					sort.Sort(ByKey(kvs))
+					kvs := mapf(srcFileName, string(bytes))
 					for _, kv := range kvs {
 						key := kv.Key
 						val := kv.Value
@@ -88,9 +98,30 @@ func Worker(mapf func(string, string) []KeyValue,
 			file.Close()
 			closeReduceFile(reduceFileMap)
 		case 1:
+			outFile, err := os.Create(fmt.Sprintf("mr-out-%d", taskID))
+			if err != nil {
+				log.Fatalf("create out file failed, taskID: %d", taskID)
+			}
+			if kvs, err := readReduce(nMap, taskID); err != nil {
+				log.Fatalf("read reduce file failed map: %v, taskID: %v, err: %v", nMap, taskID, err)
+			} else {
+				i := 0
+				for i < len(kvs) {
+					key := kvs[i].Key
+					values := []string{kvs[i].Value}
+					j := i + 1
+					for j < len(kvs) && kvs[j].Key == key {
+						values = append(values, kvs[j].Value)
+						j++
+					}
+					res := reducef(key, values)
+					fmt.Fprintf(outFile, "%v %v\n", key, res)
+					i = j
+				}
+				outFile.Close()
+			}
 		default:
 		}
-		fmt.Printf("%v\n", rsp)
 	}
 
 }
@@ -115,6 +146,32 @@ func closeReduceFile(files map[string]*os.File) error {
 		}
 	}
 	return nil
+}
+
+func readReduce(nMap, taskID int) ([]KeyValue, error) {
+	kvs := []KeyValue{}
+	for i := 0; i < nMap; i++ {
+		filename := fmt.Sprintf("mr-%d-%d", i, taskID)
+		file, err := os.Open(filename)
+		if err != nil {
+			return nil, err
+		}
+		rd := bufio.NewReader(file)
+		for {
+			if line, err := rd.ReadString('\n'); err == io.EOF {
+				break
+			} else {
+				parts := strings.Split(line, " ")
+				kvs = append(kvs, KeyValue{
+					Key:   parts[0],
+					Value: strings.TrimSuffix(parts[1], "\n"),
+				})
+			}
+		}
+		file.Close()
+	}
+	sort.Sort(ByKey(kvs))
+	return kvs, nil
 }
 
 //

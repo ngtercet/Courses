@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -20,19 +21,21 @@ type Coordinator struct {
 	// Your definitions here.
 	Status         int8
 	NReduce        int
+	NMap           int
 	GlobalWorkerId int64
 	Waitting       *TaskList
 	Running        *TaskList
 	Finished       *TaskList
+	lock           sync.Mutex
 }
 
 type Task struct {
-	Type           byte
-	ID             int
-	FileNamePrefix string
-	WorkerId       int64
-	StartTime      int64
-	EndTime        int64
+	Type        byte
+	ID          int
+	SrcFileName string
+	WorkerId    int64
+	StartTime   int64
+	EndTime     int64
 }
 
 type Req struct {
@@ -41,15 +44,18 @@ type Req struct {
 }
 
 type Rsp struct {
-	Type           byte
-	TaskID         int
-	FileNamePrefix string
-	NReduce        int
-	WorkerId       int64
+	Type        byte
+	TaskID      int
+	SrcFileName string
+	NMap        int
+	NReduce     int
+	WorkerId    int64
 }
 
 // Your code here -- RPC handlers for the worker to call.
 func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	doneID := req.TaskID
 	if req.WorkerId == -1 {
 		req.WorkerId = c.GlobalWorkerId
@@ -57,14 +63,13 @@ func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
 	}
 	if doneID != -1 {
 		task := c.Running.get(doneID)
-		fmt.Printf("running %v\n", task)
 		if task != nil && task.WorkerId == req.WorkerId {
 			doneTask := c.Running.remove(doneID)
-			fmt.Printf("done %v\n", task)
 			if doneTask != nil {
 				doneTask.EndTime = nowMillUTC()
 				c.Finished.addLast(doneTask)
-				c.commitFile(doneID, doneTask.WorkerId)
+				c.commitFile(doneID, doneTask.WorkerId, doneTask.Type)
+				// fmt.Printf("done task: %+v\n", doneTask)
 			}
 		}
 	}
@@ -77,13 +82,13 @@ func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
 					ID:   i,
 				}
 				c.Waitting.addLast(task)
-				fmt.Printf("add reduce task: %v\n", task)
 			}
 		} else {
 			c.Status = DONE
 		}
 	}
-	if c.Status != DONE {
+
+	if c.Waitting.size() != 0 {
 		task := c.Waitting.removeFirst()
 		task.StartTime = nowMillUTC()
 		task.WorkerId = req.WorkerId
@@ -94,32 +99,35 @@ func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
 			rsp.Type = 1
 		}
 		rsp.TaskID = task.ID
-		rsp.FileNamePrefix = task.FileNamePrefix
+		rsp.SrcFileName = task.SrcFileName
+		rsp.NMap = c.NMap
 		rsp.NReduce = c.NReduce
 		rsp.WorkerId = task.WorkerId
+	}
+	if c.Status == DONE {
+		rsp.NMap = -1
 	}
 	return nil
 }
 
-func (c *Coordinator) commitFile(taskID int, workerId int64) {
+func (c *Coordinator) commitFile(taskID int, workerId int64, taskType byte) {
 	var temp string
 	var real string
-	switch c.Status {
-	case MAPPING:
+	switch taskType {
+	case 0:
 		for i := 0; i < c.NReduce; i++ {
 			// e.g. mr-1-1-1
 			temp = fmt.Sprintf("mr-%d-%d-%d", taskID, i, workerId)
 			real = fmt.Sprintf("mr-%d-%d", taskID, i)
 			os.Rename(temp, real)
 		}
-	case REDUCING:
+	case 1:
 		// e.g. mr-out-1-1
 		temp = fmt.Sprintf("mr-out-%d-%d", taskID, workerId)
 		real = fmt.Sprintf("mr-out-%d", taskID)
 		os.Rename(temp, real)
 	default:
 	}
-	fmt.Printf("commit file %s to %s\n", temp, real)
 }
 
 func (c *Coordinator) scanTaskBG() {
@@ -135,6 +143,9 @@ func nowMillUTC() int64 {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.Status == DONE
 }
 
@@ -156,6 +167,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	c := Coordinator{
 		Status:         MAPPING,
+		NMap:           len(files),
 		NReduce:        nReduce,
 		GlobalWorkerId: 0,
 		Waitting:       watting,
@@ -165,9 +177,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	for i, file := range files {
 		task := &Task{
-			Type:           0,
-			ID:             i,
-			FileNamePrefix: file,
+			Type:        0,
+			ID:          i,
+			SrcFileName: file,
 		}
 		c.Waitting.addLast(task)
 	}
@@ -201,6 +213,7 @@ type TaskList struct {
 	Head *TaskNode
 	Tail *TaskNode
 	Size int
+	lock sync.Mutex
 }
 
 func (t *TaskList) get(id int) *Task {
