@@ -60,7 +60,6 @@ func Worker(mapf func(string, string) []KeyValue,
 			continue
 		}
 		if rsp.NMap == -1 {
-			fmt.Printf("all tasks is done, worker: %v exit\n", workerId)
 			return
 		}
 		type_ := rsp.Type

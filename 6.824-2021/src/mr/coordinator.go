@@ -66,10 +66,9 @@ func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
 		if task != nil && task.WorkerId == req.WorkerId {
 			doneTask := c.Running.remove(doneID)
 			if doneTask != nil {
-				doneTask.EndTime = nowMillUTC()
+				doneTask.EndTime = nowSecUTC()
 				c.Finished.addLast(doneTask)
 				c.commitFile(doneID, doneTask.WorkerId, doneTask.Type)
-				// fmt.Printf("done task: %+v\n", doneTask)
 			}
 		}
 	}
@@ -90,7 +89,7 @@ func (c *Coordinator) AskForTask(req *Req, rsp *Rsp) error {
 
 	if c.Waitting.size() != 0 {
 		task := c.Waitting.removeFirst()
-		task.StartTime = nowMillUTC()
+		task.StartTime = nowSecUTC()
 		task.WorkerId = req.WorkerId
 		c.Running.addLast(task)
 		if c.Status == MAPPING {
@@ -131,10 +130,24 @@ func (c *Coordinator) commitFile(taskID int, workerId int64, taskType byte) {
 }
 
 func (c *Coordinator) scanTaskBG() {
-
+	for {
+		c.lock.Lock()
+		node := c.Running.Head
+		for node != nil {
+			if nowSecUTC()-node.Task.StartTime > 5 {
+				c.Running.remove(node.Task.ID)
+				node.Task.StartTime = -1
+				node.Task.WorkerId = -1
+				c.Waitting.addLast(node.Task)
+			}
+			node = node.Next
+		}
+		c.lock.Unlock()
+		time.Sleep(time.Second)
+	}
 }
 
-func nowMillUTC() int64 {
+func nowSecUTC() int64 {
 	return time.Now().UTC().Unix()
 }
 
@@ -183,6 +196,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		}
 		c.Waitting.addLast(task)
 	}
+	go c.scanTaskBG()
 	c.server()
 	return &c
 }
@@ -213,7 +227,6 @@ type TaskList struct {
 	Head *TaskNode
 	Tail *TaskNode
 	Size int
-	lock sync.Mutex
 }
 
 func (t *TaskList) get(id int) *Task {
