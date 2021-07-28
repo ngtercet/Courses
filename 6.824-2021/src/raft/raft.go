@@ -30,8 +30,8 @@ import (
 
 const (
 	// limited to 10 heartbeats per second
-	heartbeatInterval  = 100
-	electionTimeoutMin = 150
+	heartbeatInterval  = 130
+	electionTimeoutMin = 200
 	electionTimeoutMax = 300
 	FOLLOWER           = 1
 	CANDIDATE          = FOLLOWER << 1
@@ -89,12 +89,10 @@ type Raft struct {
 	nextIndex  []int
 	matchIndex []int
 
-	// set to true when:
+	// set to time.Now() when:
 	// 1. receive AppendEntries RPC from current leader
 	// 2. grant vote to candidate
-	// set to false when:
-	// timeout timer awake from random sleep
-	notTimeout bool
+	heartbeatTime time.Time
 }
 
 type LogEntry struct {
@@ -222,7 +220,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	DPrintf("[RequestVote REQ] peer %d term %d -> peer %d term %d role %d", args.CandidateId, args.Term, rf.me, rf.currentTerm, rf.role)
 
 	reply.Term = rf.currentTerm
-
 	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		return
@@ -241,6 +238,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	reply.VoteGranted = false
+	DPrintf("peer %d reject vote for %d, voteFor is %d", rf.me, args.CandidateId, rf.voteFor)
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -363,18 +361,17 @@ func (rf *Raft) ticker() {
 		time.Sleep(time.Duration(timeToSleep) * time.Millisecond)
 
 		rf.mu.Lock()
-		if rf.role != LEADER && !rf.notTimeout {
+		if rf.role != LEADER && int(time.Since(rf.heartbeatTime).Milliseconds()) > timeToSleep {
 			rf.mu.Unlock()
 			rf.startElection()
 		} else {
-			rf.notTimeout = false
 			rf.mu.Unlock()
 		}
 	}
 }
 
 func randomTimeout(min, max int) int {
-	return min + rand.Intn(max-min)
+	return min + int(rand.Intn(max-min))
 }
 
 //
@@ -413,9 +410,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 func (rf *Raft) startElection() {
 	DPrintf("[startElection] peer %d timeout", rf.me)
 
-	rf.become(CANDIDATE)
-
 	rf.mu.Lock()
+	rf.become(CANDIDATE)
 	lastLogIndex := len(rf.log) - 1
 	var lastLogTerm int
 	if lastLogIndex < 0 {
@@ -431,7 +427,7 @@ func (rf *Raft) startElection() {
 	}
 	rf.mu.Unlock()
 
-	votes := 0
+	votes := 1
 	cond := sync.NewCond(&rf.mu)
 	cnt := 0
 
@@ -464,13 +460,12 @@ func (rf *Raft) startElection() {
 	}
 
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	cond.Wait()
-	rf.mu.Unlock()
 	if votes*2 > len(rf.peers) {
 		DPrintf("peer %d becomes leader", rf.me)
 		rf.become(LEADER)
 	}
-	DPrintf("peer %d election finish", rf.me)
 }
 
 func (rf *Raft) heartbeatBG() {
@@ -484,20 +479,21 @@ func (rf *Raft) heartbeatBG() {
 
 	reply := AppendEntriesReply{}
 
-	var wg sync.WaitGroup
-	for rf.role == LEADER {
-		for _, peer := range rf.peers {
-			wg.Add(1)
-			go func(peer *labrpc.ClientEnd) {
-				peer.Call("Raft.AppendEntries", &args, &reply)
-
-				rf.mu.Lock()
-				rf.becomeFollowerIfNeeded(reply.Term)
-				rf.mu.Unlock()
-
-				wg.Done()
-			}(peer)
-
+	for !rf.killed() && rf.role == LEADER {
+		var wg sync.WaitGroup
+		for idx, peer := range rf.peers {
+			if idx != rf.me {
+				wg.Add(1)
+				go func(idx int, peer *labrpc.ClientEnd) {
+					a := peer.Call("Raft.AppendEntries", &args, &reply)
+					if a {
+						rf.mu.Lock()
+						rf.becomeFollowerIfNeeded(reply.Term)
+						rf.mu.Unlock()
+					}
+					wg.Done()
+				}(idx, peer)
+			}
 		}
 		wg.Wait()
 		time.Sleep(heartbeatInterval)
@@ -505,9 +501,6 @@ func (rf *Raft) heartbeatBG() {
 }
 
 func (rf *Raft) become(role int32) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
 	rf.role = role
 
 	switch role {
@@ -520,29 +513,32 @@ func (rf *Raft) become(role int32) {
 		rf.matchIndex = make([]int, len(rf.peers)-1)
 	case FOLLOWER:
 		rf.voteFor = -1
+		rf.resetTimeOut()
 		rf.nextIndex = nil
 		rf.matchIndex = nil
 	case CANDIDATE:
 		rf.currentTerm += 1
 		rf.voteFor = rf.me
-		rf.notTimeout = true
+		rf.resetTimeOut()
 		rf.nextIndex = nil
 		rf.matchIndex = nil
 	default:
 	}
 }
 
-// not thread safe
 func (rf *Raft) resetTimeOut() {
-	rf.notTimeout = true
+	rf.heartbeatTime = time.Now()
+	// DPrintf("peer %d reset timeout", rf.me)
 }
 
 func (rf *Raft) becomeFollowerIfNeeded(term int) {
 	if rf.currentTerm < term {
 		rf.currentTerm = term
-		rf.voteFor = -1
 		if rf.role != FOLLOWER {
 			rf.become(FOLLOWER)
+			DPrintf("peer %d becomes follower", rf.me)
+		} else {
+			rf.voteFor = -1
 		}
 	}
 }
