@@ -15,3 +15,4 @@
 - [X] Read [Raft (extended) (2014)](https://pdos.csail.mit.edu/6.824/papers/raft-extended.pdf), to end of Section 5(include leader election, log replication, safty)  
 - [X] Lab 2A: leader election  
   ![](pics/raft-lab2A.png)  
+- [X] Read [Raft (extended) (2014)](https://pdos.csail.mit.edu/6.824/papers/raft-extended.pdf), Section 7 to end (but not Section 6)
