@@ -4,6 +4,8 @@
   ![](./pics/824-mr.png)  
 
 > Helpful materials for raft:  
+> [Raft paper](https://pdos.csail.mit.edu/6.824/papers/raft-extended.pdf)  
+> [CONSENSUS: BRIDGING THEORY AND PRACTICE](https://link.zhihu.com/?target=https%3A//web.stanford.edu/~ouster/cgi-bin/papers/OngaroPhD.pdf)  
 > Guides:   
 > [Students' Guide to Raft](https://thesquareplanet.com/blog/students-guide-to-raft/)  
 > [Raft Locking Advice](https://pdos.csail.mit.edu/6.824/labs/raft-locking.txt)  
